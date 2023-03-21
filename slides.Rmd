@@ -1,0 +1,244 @@
+---
+title: "BRFSS"
+output:
+  revealjs::revealjs_presentation:
+    theme: simple
+    center: FALSE
+---
+
+```{r setup, include=FALSE}
+source("slides.R")
+```
+
+
+
+# Goals:
+
+- Tell a story with data.
+- Discuss how social science is different.
+
+```{r echo=FALSE, message=FALSE, out.width = "45%", caption = "Data Trap"}
+knitr::include_graphics("https://imgs.xkcd.com/comics/data_trap_2x.png")
+```
+
+
+
+# Let the data speak!
+
+- Introductory data classes tend to focus on "mechanics".
+  - You have to start <span style = "color:green; font-style:italic;">somewhere . . . </span>
+  - Examples:
+    - Calculate the average.
+    - Count the number of things per group (stratification).
+    - Build a specific model, `y ~ x`.
+- Storytelling:
+  - Humans do this naturally.
+  - Yet, usually causes <span style="color:dodgerblue">students to freeze up</span>.
+  - This can be a powerful way to let the data speak.
+  - <span style = "color:red">CAUTION!!!</span>
+
+
+
+# BRFSS
+
+- Data: Behavioral Risk Factor Surveillance System (BRFSS)
+  - Annual survey run by the CDC which began in 1994.
+  - Administered by state health departments
+  - State health departments can add questions.
+  - Focus: car safety, obesity, exercise, etc.
+  - It is based on a SAMPLE of people in the state.
+  - Methodology allows for us to make meaningful statements about subgroups.
+    - AKA: stratification(s)
+    - Today's story is based on all adult answers.
+  - All answers are "self report".
+
+
+
+# Questions in our data
+
+There are many, many more questions on the BRFSS.
+<small>
+
+- **Weight Status:**
+  - <span style = "color:dodgerblue">`obese:` Percent of adults aged 18 years and older who have obesity.</span>
+  - `overweight:` Percent of adults aged 18 years and older who have an overweight classification.
+- **Behavior:**
+  - `no_fruits:` Percent of adults who report consuming fruit less than one time daily.
+  - `no_vegetables:` Percent of adults who report consuming vegetables less than one time daily.
+- **Physical Activity:**
+  - `exercise_150:` Percent of adults who achieve at least 150 minutes a week of moderate-intensity aerobic physical activity or 75 minutes a week of vigorous-intensity aerobic physical activity and engage in muscle-strengthening activities on 2 or more days a week.
+  - `exercise_300:` Percent of adults who achieve at least 300 minutes a week of moderate-intensity aerobic physical activity or 150 minutes a week of vigorous-intensity aerobic activity (or an equivalent combination).
+  - `muscle_strengthening:` Percent of adults who engage in muscle-strengthening activities on 2 or more days a week.
+  - `exercise_150_muscle_strengthening:` Percent of adults who achieve at least 150 minutes a week of moderate-intensity aerobic physical activity or 75 minutes a week of vigorous-intensity aerobic physical activity and engage in muscle-strengthening activities on 2 or more days a week.
+  - <span style = "color:dodgerblue">`no_physical_activity:` Percent of adults who engage in no leisure-time physical activity.</span>
+
+</small>  
+
+
+
+# Our story:
+
+<small>
+
+- **Question:** At the state-population level, what is the relationship between the percentage of the population which does not exercise and the percentage of the population which is obese?
+- **Answer:** Lack of exercise is a risk factor for obesity at the individual and population level.
+  - States with higher levels of self-reported lack of exercise also have higher levels of self-reported obesity.
+  - Although the relationship might not be as simple as you might think.
+  - Modeling human behavior/outcomes is hard.
+
+</small>
+```{r echo=FALSE, out.width = "70%", caption = "The Tell-Tale Beat"}
+knitr::include_graphics("https://imgs.xkcd.com/comics/the_tell_tale_beat.png")
+```
+  
+
+
+# Data
+
+```{r echo=FALSE}
+if(interactive()) {
+  brfss_total |>
+    kable()
+} else {
+  brfss_total |>
+    kable() |>
+    kable_styling("striped", full_width = F) |>
+    scroll_box(width = "95%", height = "600px") 
+}
+```
+
+
+
+# State participation is consistent
+
+- Remember: states administer the BRFSS.
+- Note: The 51st "state" is the District of Columbia.
+
+<br />
+
+```{r echo=FALSE, message=FALSE, results='asis'}
+bind_rows(
+  state_participation |> rename(Region = region),
+  state_participation |>
+    ungroup() |>
+    summarise_if(is.numeric, sum) |>
+    mutate(Region = "**Total**")
+) |> 
+  kable()
+```
+
+
+
+# Sample sizes are consistent
+
+Relatively speaking . . . . 
+
+<br />
+
+```{r echo=FALSE, message=FALSE, results='asis'}
+brfss_total |>
+  group_by(region, year) |>
+  summarize(
+    sample_size = sum(sample_size)
+  ) |>
+  pivot_wider(names_from = year, values_from = sample_size) |>
+  rename(Region = region) |>
+  kable(format.args = list(big.mark = ","))
+```
+
+
+
+
+
+# Obesity (increases) every year
+
+```{r echo=FALSE, warning=FALSE, messge=FALSE}
+ggplot(brfss_total,
+       aes(x = year, y = obese, size = sample_size)) +
+  geom_point(aes(color = region), alpha = .5) +
+  geom_smooth(aes(weight = sample_size), formula = y ~ x, method = lm, se = FALSE) +
+  xlab("Year") +
+  ylab("Percent Population Obese")
+```
+
+
+
+# No physical stays about the same
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(brfss_total,
+       aes(x = year, y = no_physical_activity, size = sample_size)) +
+  geom_point(aes(color = region)) +
+  geom_smooth(aes(weight = sample_size), formula = y ~ x, method = lm, se = FALSE) +
+  xlab("Year") +
+  ylab("Percent population no physical activity") +
+  ylab("Percent Population Obese")
+```
+
+
+
+# Positive Relationship (2011)
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(brfss_total |> filter(year == 2011),
+       aes(x = no_physical_activity, y = obese, size = sample_size)) +
+  geom_point() +
+  geom_smooth(aes(weight = sample_size), formula = y ~ x, method = "lm", se = FALSE) +
+  xlab("Percent population no physical activity") +
+  ylab("Percent Population Obese")
+```
+
+
+
+# Not a stable slope
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(brfss_total |> mutate(year = as.factor(year)),
+       aes(x = no_physical_activity, y = obese, size = sample_size, color = year)) +
+  geom_point() +
+  geom_smooth(aes(weight = sample_size), formula = y ~ x, method = "lm", se = FALSE) +
+  xlab("Percent population no physical activity") +
+  ylab("Percent Population Obese")
+```
+
+
+
+# Obesity ~ no exercise (2011)
+
+<br />
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+tidy(lm_no_physical_activity_2012)
+```
+
+
+
+# Obesity ~ no exercise (2016)
+
+<br />
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+tidy(lm_no_physical_activity_2016)
+```
+
+
+
+# Y-Intercept Over Time
+
+```{r echo=FALSE}
+ggplot(y_intercept_over_time, aes(x = year, y = y_intercept)) +
+  geom_point() +
+  xlab("Year") +
+  ylab("Y Intercept")
+```
+
+
+
+# Slope Over Time
+
+```{r echo=FALSE}
+ggplot(slope_over_time, aes(x = year, y = slope)) +
+  geom_point() +
+  xlab("Year") +
+  ylab("Slope")
+```

@@ -1,0 +1,467 @@
+---
+title: Import
+output: html_notebook
+---
+
+Data Source: https://catalog.data.gov/dataset/nutrition-physical-activity-and-obesity-behavioral-risk-factor-surveillance-system
+
+```{r setup}
+pacman::p_load(janitor, knitr, rio, tidyr, tidyverse)
+brfss <- import("archive.zip") |> clean_names()
+cat(c("BRFSS Dimensions:", dim(brfss)))
+
+census_regions_file <- "https://github.com/cphalpert/census-regions/raw/master/us%20census%20bureau%20regions%20and%20divisions.csv"
+census_regions <- import(census_regions_file) |> clean_names()
+```
+
+# About
+
+I used this RMarkdown document to explore the CDC BRFSS data set and manipulate it until I had a useful data set for class. I thought about extracting the code I needed to just reorganize the data into a separate script, but running this doesn't actually take that long so the effort seemed pointless.
+
+I also import the US Census Regions and add these to the CDC data to help my students further explore the data. I used the Census regions as stored cphalpert at [census-regions](https://github.com/cphalpert/census-regions). I use this data set often, because, as he notes, PDFs suck.
+
+# Column Names
+
+```{r col_names}
+names(brfss) |> knitr::kable()
+```
+
+
+
+# Year
+
+```{r}
+brfss |>
+  select(year_start, year_end) |>
+  distinct()
+```
+
+Since all the years begin/end in the same year, I will have a single year column called `year`.
+
+```{r}
+brfss <- brfss |>
+  select(-year_end) |>
+  rename(year = year_start)
+cat(c("BRFSS Dimensions:", dim(brfss)))
+```
+
+
+
+# Location Abbr/Desc/ID
+
+```{r}
+brfss |>
+  select(geo_location, location_abbr, location_desc, location_id) |>
+  distinct()
+```
+
+- I don't need geo_location. Otherwise, these _are_ useful.
+- I need to document it so that I remember to separate brfss and state upon import.
+
+```{r}
+brfss <- brfss |> select(-geo_location)
+cat(c("BRFSS Dimensions:", dim(brfss)))
+```
+
+
+
+# Data Source
+
+```{r}
+brfss |>
+  select(datasource) |>
+  distinct()
+```
+
+And since it is all one, We don't need this. We know this comes from the BRFSS data.
+
+```{r}
+brfss <- brfss |> select(-datasource)
+cat(c("BRFSS Dimensions:", dim(brfss)))
+```
+
+
+
+# Class (ID), Topic (ID), Question (ID)
+
+```{r}
+brfss |>
+  select(class, class_id) |>
+  distinct()
+```
+
+So this is useful, although it should be all together.
+
+
+
+# Data Value Unit, Data Value Type (ID), Data Value, Data Value Alt, 
+
+```{r}
+brfss |>
+  select(
+    data_value_unit,
+    data_value_type,
+    data_value_type_id,
+    data_value,
+    data_value_alt
+  ) |>
+  distinct()
+```
+
+- Data Value clearly has some value.
+-  I don't think we need Data Value Alt.
+-  Data Value Unit is just NA, DROP.
+-  Data Value Type and Data Value Type ID are useless.
+
+```{r}
+brfss <-
+  brfss |>
+  select(
+    -data_value_unit,
+    -data_value_type,
+    -data_value_type_id,
+    -data_value_alt
+  )
+cat(c("BRFSS Dimensions:", dim(brfss)))
+```
+
+
+
+# Data Value Footnote Symbol, Data Value Footnote
+
+```{r}
+brfss |>
+  select(
+    data_value_footnote,
+    data_value_footnote_symbol
+  ) |>
+  distinct()
+```
+
+This is entirely useless.
+
+```{r}
+brfss <-
+  brfss |>
+  select(
+    -data_value_footnote,
+    -data_value_footnote_symbol
+  )
+cat(c("BRFSS Dimensions:", dim(brfss)))
+```
+
+I'm down to 25 columns!
+
+
+
+# Low/High Confidence Limit
+
+For the analysis I want to do, I'm simply going to use the estimated average.
+
+```{r}
+brfss <-
+  brfss |>
+  select(
+    -low_confidence_limit,
+    -high_confidence_limit
+  )
+cat(c("BRFSS Dimensions:", dim(brfss)))
+```
+
+
+
+# Sample Size
+
+I know I want to keep this since it is actually valuable.
+
+
+
+# Total
+
+```{r}
+brfss |>
+  group_by(total) |>
+  count()
+```
+
+- Sigh.
+- This seems to actually be connected to the next section.
+
+
+
+# Stratification Category 1, Stratification 1, Stratification Category 1, Stratification Category ID, Stratification ID
+
+```{r}
+brfss |>
+  select(
+    stratification_category1,
+    stratification_category_id1,
+    stratification1,
+    stratification_id1,
+    total
+  ) |>
+  distinct()
+```
+
+- Dear god. These are actually (mostly) useful.
+- Total is not.
+- But age_years, education, gender, income, & race_ethnicity are all not useful.
+- Let me confirm that.
+
+```{r}
+brfss |>
+  select(stratification1, age_years) |>
+  distinct()
+
+brfss |>
+  select(stratification1, education) |>
+  distinct()
+```
+
+Drop all of these columns.
+
+```{r}
+brfss <-
+  brfss |>
+  select(
+    -age_years,
+    -education,
+    -gender,
+    -income,
+    -race_ethnicity,
+    -total
+  )
+cat(c("BRFSS Dimensions:", dim(brfss)))
+```
+
+- Six more columns gone like the wind. Wow
+- And I want to do some simple renaming.
+
+```{r}
+brfss <-
+  brfss |>
+  rename(
+    stratification_category = stratification_category1,
+    stratification_category_id = stratification_category_id1,
+    stratification = stratification1,
+    stratification_id = stratification_id1
+  )
+```
+
+This doesn't remove any columns, but it makes the data easier to manage.
+
+# Topic, Question, Question ID
+
+It would be nice to reduce the number of rows dramatically.
+
+```{r}
+brfss |>
+  select(topic_id, topic, question_id, question) |>
+  distinct() |>
+  kable()
+```
+
+- What I need to do is to create a separate data set with the questions data.
+- And then create convenient column labels.
+- And then remove everything except the question_id.
+
+```{r}
+questions <-
+  brfss |>
+  select(class_id, class, topic_id, topic, question_id, question) |>
+  distinct()
+brfss <- brfss |> select(-class, -class_id, -topic_id, -topic, -question)
+cat(c("BRFSS Dimensions:", dim(brfss)))
+```
+
+And now . . . .
+
+|topic_id |topic                            |question_id |question                                                                                                                                                                                                                                              | question_label                    |
+|:--------|:--------------------------------|:-----------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------------------------|
+|OWS1     |Obesity / Weight Status          |Q036        |Percent of adults aged 18 years and older who have obesity                                                                                                                                                                                            | obese                             |
+|PA1      |Physical Activity - Behavior     |Q047        |Percent of adults who engage in no leisure-time physical activity                                                                                                                                                                                     | no_physical_activity              |
+|OWS1     |Obesity / Weight Status          |Q037        |Percent of adults aged 18 years and older who have an overweight classification                                                                                                                                                                       | overweight                        |
+|FV1      |Fruits and Vegetables - Behavior |Q018        |Percent of adults who report consuming fruit less than one time daily                                                                                                                                                                                 | no_fruits                         |
+|FV1      |Fruits and Vegetables - Behavior |Q019        |Percent of adults who report consuming vegetables less than one time daily                                                                                                                                                                            | no_vegetables                     |
+|PA1      |Physical Activity - Behavior     |Q043        |Percent of adults who achieve at least 150 minutes a week of moderate-intensity aerobic physical activity or 75 minutes a week of vigorous-intensity aerobic activity (or an equivalent combination)                                                  | exercise_150                      |
+|PA1      |Physical Activity - Behavior     |Q046        |Percent of adults who engage in muscle-strengthening activities on 2 or more days a week                                                                                                                                                              | muscle_strengthening              |
+|PA1      |Physical Activity - Behavior     |Q044        |Percent of adults who achieve at least 150 minutes a week of moderate-intensity aerobic physical activity or 75 minutes a week of vigorous-intensity aerobic physical activity and engage in muscle-strengthening activities on 2 or more days a week | exercise_150_muscle_strengthening |
+|PA1      |Physical Activity - Behavior     |Q045        |Percent of adults who achieve at least 300 minutes a week of moderate-intensity aerobic physical activity or 150 minutes a week of vigorous-intensity aerobic activity (or an equivalent combination)                                                 | exercise_300                      |
+
+Which really boils down to . . . . 
+
+|question_id | question_label                    |
+|:-----------|:----------------------------------|
+|Q036        | obese                             |
+|Q047        | no_physical_activity              |
+|Q037        | overweight                        |
+|Q018        | no_fruits                         |
+|Q019        | no_vegetables                     |
+|Q043        | exercise_150                      |
+|Q046        | muscle_strengthening              |
+|Q044        | exercise_150_muscle_strengthening |
+|Q045        | exercise_300                      |
+
+```{r}
+brfss <-
+  brfss |>
+  mutate(
+    question_label = case_when(
+      question_id == "Q036" ~ "obese",
+      question_id == "Q047" ~ "no_physical_activity",
+      question_id == "Q037" ~ "overweight",
+      question_id == "Q018" ~ "no_fruits",
+      question_id == "Q019" ~ "no_vegetables",
+      question_id == "Q043" ~ "exercise_150",
+      question_id == "Q046" ~ "muscle_strengthening",
+      question_id == "Q044" ~ "exercise_150_muscle_strengthening",
+      question_id == "Q045" ~ "exercise_300"
+    )
+  ) |>
+  select(-question_id)
+
+brfss_obese <-
+  brfss |>
+  filter(question_label == "obese") |>
+  pivot_wider(names_from = question_label, values_from = data_value)
+brfss_no_physical_activity <-
+  brfss |>
+  select(
+    -location_abbr,
+    -location_desc,
+    -stratification_category,
+    -stratification,
+    -sample_size
+  ) |>
+  filter(question_label == "no_physical_activity") |>
+  pivot_wider(names_from = question_label, values_from = data_value)
+brfss_overweight <-
+  brfss |>
+  select(
+    -location_abbr,
+    -location_desc,
+    -stratification_category,
+    -stratification,
+    -sample_size
+  ) |>
+  filter(question_label == "overweight") |>
+  pivot_wider(names_from = question_label, values_from = data_value)
+brfss_no_fruits <-
+  brfss |>
+  select(
+    -location_abbr,
+    -location_desc,
+    -stratification_category,
+    -stratification,
+    -sample_size
+  ) |>
+  filter(question_label == "no_fruits") |>
+  pivot_wider(names_from = question_label, values_from = data_value)
+brfss_no_vegetables <-
+  brfss |>
+  select(
+    -location_abbr,
+    -location_desc,
+    -stratification_category,
+    -stratification,
+    -sample_size
+  ) |>
+  filter(question_label == "no_vegetables") |>
+  pivot_wider(names_from = question_label, values_from = data_value)
+brfss_exercise_150 <-
+  brfss |>
+  select(
+    -location_abbr,
+    -location_desc,
+    -stratification_category,
+    -stratification,
+    -sample_size
+  ) |>
+  filter(question_label == "exercise_150") |>
+  pivot_wider(names_from = question_label, values_from = data_value)
+brfss_muscle_strengthening <-
+  brfss |>
+  select(
+    -location_abbr,
+    -location_desc,
+    -stratification_category,
+    -stratification,
+    -sample_size
+  ) |>
+  filter(question_label == "muscle_strengthening") |>
+  pivot_wider(names_from = question_label, values_from = data_value)
+brfss_exercise_150_muscle_strengthening <-
+  brfss |>
+  select(
+    -location_abbr,
+    -location_desc,
+    -stratification_category,
+    -stratification,
+    -sample_size
+  ) |>
+  filter(question_label == "exercise_150_muscle_strengthening") |>
+  pivot_wider(names_from = question_label, values_from = data_value)
+brfss_exercise_300 <-
+  brfss |>
+  select(
+    -location_abbr,
+    -location_desc,
+    -stratification_category,
+    -stratification,
+    -sample_size
+  ) |>
+  filter(question_label == "exercise_300") |>
+  pivot_wider(names_from = question_label, values_from = data_value)
+```
+
+And now we try to get it all back together again . . .
+
+```{r}
+join_cols <-
+  c("year", "location_id", "stratification_category_id", "stratification_id")
+
+brfss <-
+  brfss_obese |>
+  left_join(
+    census_regions,
+    by = c("location_abbr" = "state_code", "location_desc" = "state")
+  ) |>
+  left_join(brfss_overweight, by = join_cols) |>
+  left_join(brfss_no_physical_activity) |>
+  left_join(brfss_exercise_150) |>
+  left_join(brfss_exercise_300) |>
+  left_join(brfss_muscle_strengthening) |>
+  left_join(brfss_exercise_150_muscle_strengthening) |>
+  left_join(brfss_no_fruits) |>
+  left_join(brfss_no_vegetables) |>
+  select(
+    year,
+    location_id,
+    location_abbr,
+    location_desc,
+    region,
+    division,
+    stratification_category_id,
+    stratification_category,
+    stratification_id,
+    stratification,
+    sample_size,
+    obese,
+    overweight,
+    no_physical_activity,
+    exercise_150,
+    exercise_300,
+    muscle_strengthening,
+    exercise_150_muscle_strengthening,
+    no_fruits,
+    no_vegetables
+  ) |>
+  arrange(year, location_id, stratification_category_id, stratification_id)
+```
+
+And now I just need to save it all to disk.
+
+```{r}
+write_csv(questions, "questions.csv", na = "")
+write_csv(brfss, "brfss.csv", na = "")
+```
