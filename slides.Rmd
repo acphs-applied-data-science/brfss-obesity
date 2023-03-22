@@ -119,10 +119,10 @@ if(interactive()) {
 ```{r echo=FALSE, message=FALSE, results='asis'}
 bind_rows(
   state_participation |> rename(Region = region),
-  state_participation |>
-    ungroup() |>
-    summarise_if(is.numeric, sum) |>
-    mutate(Region = "**Total**")
+state_participation |>
+ungroup() |>
+summarise_if(is.numeric, sum) |>
+mutate(Region = "**Total**")
 ) |> 
   kable()
 ```
@@ -144,6 +144,14 @@ brfss_total |>
   pivot_wider(names_from = year, values_from = sample_size) |>
   rename(Region = region) |>
   kable(format.args = list(big.mark = ","))
+
+#brfss_total |>
+#  group_by(region, year) |>
+#  summarize(
+#    sample_size = sum(sample_size)
+#  ) |>
+#  ggplot(aes(x = year, y = sample_size, color = region)) +
+#  geom_line()
 ```
 
 
@@ -208,7 +216,7 @@ ggplot(brfss_total |> mutate(year = as.factor(year)),
 <br />
 
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
-tidy(lm_no_physical_activity_2012)
+tidy(lm_no_physical_activity_2012) |> kable()
 ```
 
 
